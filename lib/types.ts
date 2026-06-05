@@ -1,0 +1,56 @@
+export interface Coordinates {
+  lat: number;
+  lng: number;
+}
+
+export interface GeoData {
+  address: string;
+  addressNormalized: string;
+  city: string;
+  county: string;
+  province: string;
+  coords: Coordinates;
+  parcelId?: string;         // ID działki z GUGiK ULDK
+  parcelArea?: number;       // Powierzchnia działki w m²
+  parcelType?: string;       // Typ użytku (Br, R, B, etc.)
+  floodRisk?: 'none' | 'low' | 'medium' | 'high';
+  solarPotential?: number;   // kWh/kWp/rok z PVGIS
+  airQualityIndex?: number;  // AQI z OpenAQ
+  walkScore?: number;        // izochrone 15min pieszo — liczba POI
+}
+
+export interface ReportItem {
+  icon: string;
+  label: string;
+  value: string;
+  meter?: number;            // 0–100 dla paska postępu
+  meterColor?: string;       // kolor paska (#hex)
+  explain: string;           // Ludzkie wyjaśnienie
+  sourceUrl?: string;        // Link do źródła danych
+}
+
+export interface ReportSection {
+  id: string;
+  icon: string;
+  title: string;
+  status: 'good' | 'ok' | 'bad' | 'neutral';
+  items: ReportItem[];
+}
+
+export interface Report {
+  id?: string;
+  createdAt?: string;
+  address: string;
+  city: string;
+  score: number;             // 0–100
+  scoreLabel: string;        // np. "Świetna lokalizacja"
+  scoreSummary: string;      // 1-2 zdania ogólnego podsumowania
+  sections: ReportSection[];
+  coords?: Coordinates;
+  geoData?: Partial<GeoData>;
+}
+
+export interface ApiResponse<T> {
+  data?: T;
+  error?: string;
+}
