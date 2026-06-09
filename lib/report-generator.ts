@@ -1,15 +1,11 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { geocodeAddress } from './apis/geocoding';
 import { getParcelByCoords } from './apis/gugik';
 import { getSolarPotential } from './apis/pvgis';
 import { getFloodRisk } from './apis/flood';
 import { getNearestAirQuality } from './apis/airquality';
 import { getAccessibilityData } from './apis/openroute';
+import { generateJson } from './llm';
 import type { GeoData, Report } from './types';
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
 
 // Zbiera dane ze wszystkich API równolegle (Promise.allSettled)
 async function collectGeoData(address: string): Promise<GeoData | null> {
@@ -43,7 +39,7 @@ async function collectGeoData(address: string): Promise<GeoData | null> {
   };
 }
 
-// Buduje prompt dla Claude z prawdziwymi danymi
+// Buduje prompt dla modelu AI z prawdziwymi danymi
 function buildPrompt(address: string, geoData: GeoData): string {
   const dataContext = `
 ADRES: ${address}
@@ -188,17 +184,9 @@ export async function generateReport(address: string): Promise<Report | null> {
     throw new Error('Nie mogę zlokalizować podanego adresu. Sprawdź czy adres jest w Polsce i spróbuj ponownie.');
   }
 
-  // Wygeneruj raport przez Claude
+  // Wygeneruj raport przez wybranego dostawcę AI (domyślnie OpenAI gpt-4o-mini)
   const prompt = buildPrompt(address, geoData);
-
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 2000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const firstTextBlock = message.content.find((b) => b.type === 'text');
-  const rawText = firstTextBlock && firstTextBlock.type === 'text' ? firstTextBlock.text : '';
+  const rawText = await generateJson(prompt);
 
   // Parsuj JSON
   let report: Report;

@@ -5,7 +5,7 @@ Serwis generujący prosty, zrozumiały raport o nieruchomości lub działce. Uż
 ## Stack
 
 - **Next.js 15** (App Router) + TypeScript + Tailwind CSS
-- **Anthropic Claude API** — generowanie raportu
+- **AI** — OpenAI `gpt-4o-mini` (domyślnie) lub Anthropic Claude, przełączane przez `LLM_PROVIDER`
 - **Supabase** (PostgreSQL) — zapis raportów
 - **Leaflet** — mapa działki
 - Publiczne API: Nominatim (geocoding), GUGiK ULDK, PVGIS (solar), ISOK (powódź), OpenAQ (powietrze), OpenRouteService + Overpass (dojazd)
@@ -22,7 +22,14 @@ npm run dev                       # http://localhost:3000
 
 ## Zmienne środowiskowe
 
-Zobacz `.env.example`. Wymagane: `ANTHROPIC_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`. Opcjonalne: `ORS_API_KEY`, `OPENAQ_API_KEY`.
+Zobacz `.env.example`. Wymagane: klucz wybranego dostawcy AI + Supabase.
+
+**Wybór dostawcy AI** — zmienna `LLM_PROVIDER`:
+- `openai` (domyślnie) → wymaga `OPENAI_API_KEY`, model z `OPENAI_MODEL` (domyślnie `gpt-4o-mini`)
+- `anthropic` → wymaga `ANTHROPIC_API_KEY`, model z `ANTHROPIC_MODEL` (domyślnie `claude-sonnet-4-20250514`)
+
+Supabase (wymagane): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
+Opcjonalne: `ORS_API_KEY`, `OPENAQ_API_KEY`.
 
 ## Baza danych (Supabase SQL Editor)
 
@@ -80,7 +87,8 @@ app/
     pdf/route.ts                # GET  — wersja raportu do wydruku/PDF
 components/                     # SearchForm, ReportCard, ReportSection, MeterBar, ScoreBadge, MapPreview, LoadingReport
 lib/
-  anthropic.ts, supabase.ts, types.ts
+  llm.ts                        # Wybór dostawcy AI (OpenAI / Anthropic)
+  openai.ts, anthropic.ts, supabase.ts, types.ts
   report-generator.ts           # Główna logika
   apis/                         # geocoding, gugik, pvgis, flood, airquality, openroute
 ```
