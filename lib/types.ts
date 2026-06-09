@@ -10,12 +10,48 @@ export interface GeoData {
   county: string;
   province: string;
   coords: Coordinates;
+  apartmentStripped?: boolean; // adres zawierał numer lokalu (lokalizujemy budynek)
   parcelId?: string;         // ID działki z GUGiK ULDK
   parcelArea?: number;       // Powierzchnia działki w m²
   parcelType?: string;       // Typ użytku (Br, R, B, etc.)
-  floodRisk?: 'none' | 'low' | 'medium' | 'high';
+  floodRisk?: 'none' | 'low' | 'medium' | 'high' | 'unknown';
+  flood?: {                  // szczegóły oceny powodziowej
+    riverName?: string;
+    riverType?: string;
+    riverDistanceM?: number;
+    elevationM?: number;
+    elevationDiffM?: number;
+    method?: string;
+  };
   solarPotential?: number;   // kWh/kWp/rok z PVGIS
   airQualityIndex?: number;  // AQI z OpenAQ
+  gios?: {                   // oficjalny indeks GIOŚ
+    stationName?: string;
+    distanceKm?: number;
+    indexCategory?: string;
+    indexValue?: number;
+  };
+  mpzp?: {                   // miejscowy plan zagospodarowania przestrzennego
+    covered: boolean;
+    purposes: string[];
+    planName?: string;
+    maxHeight?: string;
+  };
+  surroundings?: {           // otoczenie z OpenStreetMap
+    railwayDistanceM?: number;
+    majorRoadDistanceM?: number;
+    majorRoadName?: string;
+    industrialDistanceM?: number;
+    powerLineDistanceM?: number;
+    schoolsCount?: number;
+    pharmaciesCount?: number;
+    supermarketsCount?: number;
+    busStopsCount?: number;
+    parksCount?: number;
+    nearestSchoolM?: number;
+    nearestSupermarketM?: number;
+    nearestBusStopM?: number;
+  };
   walkScore?: number;        // izochrone 15min pieszo — liczba POI
 }
 

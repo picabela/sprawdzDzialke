@@ -83,17 +83,17 @@ function renderReportHtml(report: Report): string {
   <style>
     body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; color: #1f2937; max-width: 720px; margin: 0 auto; padding: 32px; }
     h1 { font-size: 22px; font-weight: 500; }
-    .score { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 80px; height: 80px; border-radius: 50%; color: #fff; background: ${report.score >= 70 ? '#166534' : report.score >= 45 ? '#92400e' : '#991b1b'}; }
+    .score { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 80px; height: 80px; color: #fff; background: ${report.score >= 70 ? '#166534' : report.score >= 45 ? '#92400e' : '#991b1b'}; }
     .score b { font-size: 28px; }
-    .report-section { border: 1px solid #f0f0f0; border-radius: 16px; padding: 20px; margin: 16px 0; }
+    .report-section { border: 1px solid #f0f0f0; padding: 20px; margin: 16px 0; }
     .report-section h2 { font-size: 16px; margin: 0 0 12px; }
     .item { padding: 10px 0; border-top: 1px solid #f5f5f5; }
     .item:first-of-type { border-top: none; }
     .item-label { font-size: 11px; text-transform: uppercase; color: #6b7280; }
     .item-value { font-weight: 600; font-size: 14px; margin: 2px 0; }
     .item-explain { font-size: 13px; color: #6b7280; }
-    .meter { height: 6px; background: #f0f0f0; border-radius: 999px; margin: 6px 0; overflow: hidden; }
-    .meter-fill { height: 100%; border-radius: 999px; }
+    .meter { height: 6px; background: #f0f0f0; margin: 6px 0; overflow: hidden; }
+    .meter-fill { height: 100%; }
     @media print { body { padding: 0; } }
   </style>
 </head>

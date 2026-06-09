@@ -1,9 +1,11 @@
 import { geocodeAddress } from './apis/geocoding';
 import { getParcelByCoords } from './apis/gugik';
 import { getSolarPotential } from './apis/pvgis';
-import { getFloodRisk } from './apis/flood';
+import { getFloodAssessment } from './apis/flood';
 import { getNearestAirQuality } from './apis/airquality';
-import { getAccessibilityData } from './apis/openroute';
+import { getGiosAirQuality } from './apis/gios';
+import { getMpzpInfo } from './apis/mpzp';
+import { getSurroundings } from './apis/surroundings';
 import { generateJson } from './llm';
 import type { GeoData, Report } from './types';
 
@@ -15,14 +17,29 @@ async function collectGeoData(address: string): Promise<GeoData | null> {
 
   const { lat, lng } = geocode;
 
-  // Krok 2: Pozostałe API równolegle (jeśli jedno padnie, reszta działa)
-  const [parcel, solar, flood, airQuality, accessibility] = await Promise.allSettled([
+  // Krok 2: Pozostałe API równolegle (jeśli jedno padnie, reszta działa).
+  // Otoczenie i powódź oba używają Overpass — wykonujemy je po kolei,
+  // żeby nie przekroczyć limitu równoległych zapytań per IP.
+  const surroundingsThenFlood = (async () => {
+    const surr = await getSurroundings(lat, lng).catch(() => null);
+    const flood = await getFloodAssessment(lat, lng).catch(() => null);
+    return { surr, flood };
+  })();
+
+  const [parcel, solar, gios, openaq, mpzp, osm] = await Promise.allSettled([
     getParcelByCoords(lat, lng),
     getSolarPotential(lat, lng),
-    getFloodRisk(lat, lng),
+    getGiosAirQuality(lat, lng),
     getNearestAirQuality(lat, lng),
-    getAccessibilityData(lat, lng),
+    getMpzpInfo(lat, lng),
+    surroundingsThenFlood,
   ]);
+
+  const osmData = osm.status === 'fulfilled' ? osm.value : null;
+  const floodData = osmData?.flood ?? null;
+  const giosData = gios.status === 'fulfilled' ? gios.value : null;
+  const mpzpData = mpzp.status === 'fulfilled' ? mpzp.value : null;
+  const surr = osmData?.surr ?? null;
 
   return {
     address: geocode.displayName,
@@ -31,28 +48,98 @@ async function collectGeoData(address: string): Promise<GeoData | null> {
     county: geocode.county,
     province: geocode.province,
     coords: { lat, lng },
+    apartmentStripped: geocode.apartmentStripped,
     parcelId: parcel.status === 'fulfilled' ? parcel.value?.parcelId : undefined,
-    floodRisk: flood.status === 'fulfilled' ? flood.value : 'none',
+    floodRisk: floodData?.risk ?? 'unknown',
+    flood: floodData
+      ? {
+          riverName: floodData.riverName,
+          riverType: floodData.riverType,
+          riverDistanceM: floodData.riverDistanceM,
+          elevationM: floodData.elevationM,
+          elevationDiffM: floodData.elevationDiffM,
+          method: floodData.method,
+        }
+      : undefined,
     solarPotential: solar.status === 'fulfilled' ? solar.value?.yearlyEnergy : undefined,
-    airQualityIndex: airQuality.status === 'fulfilled' ? (airQuality.value?.aqi ?? undefined) : undefined,
-    walkScore: accessibility.status === 'fulfilled' ? (accessibility.value?.walkable15min ?? undefined) : undefined,
+    airQualityIndex: openaq.status === 'fulfilled' ? (openaq.value?.aqi ?? undefined) : undefined,
+    gios: giosData
+      ? {
+          stationName: giosData.stationName,
+          distanceKm: giosData.distanceKm,
+          indexCategory: giosData.indexCategory,
+          indexValue: giosData.indexValue,
+        }
+      : undefined,
+    mpzp: mpzpData
+      ? {
+          covered: mpzpData.covered,
+          purposes: mpzpData.purposes,
+          planName: mpzpData.planName,
+          maxHeight: mpzpData.maxHeight,
+        }
+      : undefined,
+    surroundings: surr ?? undefined,
   };
+}
+
+function fmtM(m?: number): string {
+  if (m === undefined) return 'brak danych';
+  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`;
 }
 
 // Buduje prompt dla modelu AI z prawdziwymi danymi
 function buildPrompt(address: string, geoData: GeoData): string {
+  const s = geoData.surroundings;
+  const f = geoData.flood;
+
+  const floodContext =
+    geoData.floodRisk === 'unknown'
+      ? 'BRAK DANYCH — nie udało się ocenić. NIE pisz że jest bezpiecznie, napisz że trzeba sprawdzić na mapach ISOK (wody.isok.gov.pl).'
+      : `${geoData.floodRisk}${f?.riverDistanceM !== undefined ? ` — najbliższy ciek: ${f.riverName || f.riverType || 'ciek wodny'} w odległości ${fmtM(f.riverDistanceM)}${f.elevationDiffM !== undefined ? `, teren ${f.elevationDiffM} m nad poziomem cieku` : ''}` : ''}. UWAGA: to szacunek z odległości i wysokości terenu, nie oficjalna mapa ISOK.`;
+
   const dataContext = `
 ADRES: ${address}
+${geoData.apartmentStripped ? 'UWAGA: adres zawierał numer lokalu — raport dotyczy BUDYNKU i jego lokalizacji (numer lokalu nie wpływa na dane lokalizacyjne).' : ''}
 MIASTO: ${geoData.city}
 POWIAT: ${geoData.county}
 WOJEWÓDZTWO: ${geoData.province}
 WSPÓŁRZĘDNE: ${geoData.coords.lat.toFixed(5)}, ${geoData.coords.lng.toFixed(5)}
 ${geoData.parcelId ? `ID DZIAŁKI (ULDK): ${geoData.parcelId}` : ''}
-${geoData.floodRisk ? `ZAGROŻENIE POWODZIOWE (ISOK): ${geoData.floodRisk}` : ''}
-${geoData.solarPotential ? `POTENCJAŁ SOLARNY (PVGIS): ${geoData.solarPotential.toFixed(0)} kWh/kWp/rok` : ''}
-${geoData.airQualityIndex !== undefined ? `INDEKS JAKOŚCI POWIETRZA (OpenAQ): ${geoData.airQualityIndex} AQI` : ''}
-${geoData.walkScore !== undefined ? `OBIEKTY W 15 MIN PIESZO (OSM): ${geoData.walkScore}` : ''}
+
+ZAGROŻENIE POWODZIOWE (szacunek): ${floodContext}
+
+JAKOŚĆ POWIETRZA:
+${geoData.gios ? `- GIOŚ (oficjalny indeks polski): "${geoData.gios.indexCategory || 'brak'}" — stacja ${geoData.gios.stationName}, ${geoData.gios.distanceKm} km od adresu` : '- GIOŚ: brak stacji w pobliżu'}
+${geoData.airQualityIndex !== undefined ? `- OpenAQ AQI: ${geoData.airQualityIndex}` : ''}
+
+PLAN ZAGOSPODAROWANIA (MPZP, geoportal.gov.pl):
+${geoData.mpzp ? (geoData.mpzp.covered ? `- Punkt OBJĘTY planem miejscowym${geoData.mpzp.planName ? ` "${geoData.mpzp.planName}"` : ''}\n- Przeznaczenie terenu: ${geoData.mpzp.purposes.join('; ') || 'nie odczytano'}${geoData.mpzp.maxHeight ? `\n- Maks. wysokość zabudowy: ${geoData.mpzp.maxHeight} m` : ''}` : '- BRAK planu miejscowego w tym punkcie (lub plan niezdigitalizowany) — obowiązują warunki zabudowy (WZ)') : '- Brak danych z geoportalu'}
+
+OTOCZENIE (OpenStreetMap, realne pomiary):
+${s ? `- Linia kolejowa: ${fmtM(s.railwayDistanceM)}
+- Droga główna (krajowa/ekspresowa/autostrada): ${fmtM(s.majorRoadDistanceM)}${s.majorRoadName ? ` (${s.majorRoadName})` : ''}
+- Teren przemysłowy: ${fmtM(s.industrialDistanceM)}
+- Linia wysokiego napięcia: ${fmtM(s.powerLineDistanceM)}
+- Szkoły/przedszkola w 1,5 km: ${s.schoolsCount}${s.nearestSchoolM !== undefined ? ` (najbliższa ${fmtM(s.nearestSchoolM)})` : ''}
+- Apteki w 1,5 km: ${s.pharmaciesCount}
+- Sklepy spożywcze w 1,5 km: ${s.supermarketsCount}${s.nearestSupermarketM !== undefined ? ` (najbliższy ${fmtM(s.nearestSupermarketM)})` : ''}
+- Przystanki (bus/tram/kolej) w 800 m: ${s.busStopsCount}${s.nearestBusStopM !== undefined ? ` (najbliższy ${fmtM(s.nearestBusStopM)})` : ''}
+- Parki w 1 km: ${s.parksCount}` : '- brak danych'}
+
+POTENCJAŁ SOLARNY (PVGIS): ${geoData.solarPotential ? `${geoData.solarPotential.toFixed(0)} kWh/kWp/rok` : 'brak danych'}
 `;
+
+  const floodMeter =
+    geoData.floodRisk === 'none' ? 5 : geoData.floodRisk === 'low' ? 25 : geoData.floodRisk === 'medium' ? 60 : geoData.floodRisk === 'high' ? 90 : 50;
+  const floodColor =
+    geoData.floodRisk === 'none' ? '#15803d' : geoData.floodRisk === 'low' ? '#65a30d' : geoData.floodRisk === 'medium' ? '#d97706' : geoData.floodRisk === 'high' ? '#dc2626' : '#737373';
+  const floodValue =
+    geoData.floodRisk === 'none' ? 'Niskie ryzyko (brak cieków w pobliżu)' :
+    geoData.floodRisk === 'low' ? `Podwyższona czujność${f?.riverDistanceM !== undefined ? ` — ciek w ${fmtM(f.riverDistanceM)}` : ''}` :
+    geoData.floodRisk === 'medium' ? `Średnie ryzyko${f?.riverDistanceM !== undefined ? ` — ciek w ${fmtM(f.riverDistanceM)}` : ''}` :
+    geoData.floodRisk === 'high' ? `WYSOKIE RYZYKO${f?.riverDistanceM !== undefined ? ` — rzeka w ${fmtM(f.riverDistanceM)}` : ''}` :
+    'Brak danych — sprawdź mapy ISOK';
 
   return `Jesteś ekspertem od analizy nieruchomości w Polsce z dostępem do rzeczywistych danych publicznych.
 
@@ -65,12 +152,13 @@ Na podstawie tych danych oraz swojej wiedzy o tej lokalizacji w Polsce, wygeneru
 ZASADY:
 1. Pisz prostym, zrozumiałym językiem — jakbyś tłumaczył sąsiadowi, nie prawnikom
 2. Każde wyjaśnienie (pole "explain") musi mówić CO TO ZNACZY dla mieszkańca/inwestora
-3. Używaj konkretnych liczb i porównań (np. "to jak mieszkanie przy drodze ekspresowej")
-4. Jeśli masz prawdziwe dane z API (PVGIS, OpenAQ, ISOK) — używaj ICH, nie wymyślaj
-5. Jeśli danych brakuje — szacuj na podstawie charakterystyki lokalizacji w Polsce
+3. Używaj danych z sekcji OTOCZENIE — to realne pomiary, cytuj konkretne odległości
+4. Jeśli danych brakuje — napisz uczciwie "brak danych" i co sprawdzić samodzielnie; NIE wymyślaj i NIE udawaj że jest bezpiecznie
+5. Bliska kolej (<300 m) i droga główna (<300 m) = realny hałas; przemysł <500 m i linie WN <100 m = potencjalna uciążliwość — uwzględnij to w sekcjach hałas/zagrożenia
 6. Status: "good" = zielony (dobrze), "ok" = żółty (przeciętnie), "bad" = czerwony (uwaga), "neutral" = szary
+7. Zwróć obiekt JSON o DOKŁADNIE tej strukturze co poniżej
 
-Zwróć TYLKO JSON (bez markdown, bez backticks, bez komentarzy) w tej strukturze:
+Zwróć TYLKO JSON (bez markdown, bez backticks) w tej strukturze:
 {
   "address": "pełny sformatowany adres",
   "city": "miasto",
@@ -83,68 +171,57 @@ Zwróć TYLKO JSON (bez markdown, bez backticks, bez komentarzy) w tej strukturz
       "icon": "🔊",
       "title": "Poziom hałasu",
       "status": "good|ok|bad|neutral",
-      "items": [
-        {
-          "icon": "🚗",
-          "label": "Hałas od ruchu drogowego",
-          "value": "<konkretna wartość, np. '52 dB — umiarkowany'>",
-          "meter": <liczba 0-100>,
-          "meterColor": "<#2D7A4F lub #C8852A lub #B94040>",
-          "explain": "<2-3 zdania: co to znaczy praktycznie, jak to wpływa na codzienne życie>"
-        }
-      ]
+      "items": [<2-3 pozycje: hałas drogowy (użyj odległości do drogi głównej), kolejowy (odległość do torów), lotniczy jeśli dotyczy. Format pozycji: {"icon":"🚗","label":"...","value":"...","meter":<0-100>,"meterColor":"<#15803d|#d97706|#dc2626>","explain":"<2-3 zdania praktycznie>"}>]
     },
     {
       "id": "powietrze",
       "icon": "💨",
       "title": "Jakość powietrza",
       "status": "good|ok|bad|neutral",
-      "items": [
-        {
-          "icon": "😷",
-          "label": "Indeks jakości powietrza (AQI)",
-          "value": "${geoData.airQualityIndex !== undefined ? geoData.airQualityIndex + ' AQI' : 'brak danych ze stacji'}",
-          "meter": ${geoData.airQualityIndex !== undefined ? Math.min(100, geoData.airQualityIndex / 3) : 40},
-          "meterColor": "${geoData.airQualityIndex !== undefined ? (geoData.airQualityIndex < 50 ? '#2D7A4F' : geoData.airQualityIndex < 100 ? '#C8852A' : '#B94040') : '#C8852A'}",
-          "explain": "UZUPEŁNIJ realistycznym opisem jakości powietrza dla tej lokalizacji"
-        }
-      ]
+      "items": [<1-2 pozycje. Pierwsza MUSI cytować indeks GIOŚ: "${geoData.gios?.indexCategory || 'brak danych'}" ze stacji ${geoData.gios?.stationName || '—'} (${geoData.gios?.distanceKm ?? '—'} km). Dodaj kontekst sezonowy (smog zimą w Polsce).>]
+    },
+    {
+      "id": "planowanie",
+      "icon": "🗺️",
+      "title": "Plan zagospodarowania (MPZP)",
+      "status": "${geoData.mpzp?.covered ? 'good' : geoData.mpzp ? 'ok' : 'neutral'}",
+      "items": [<1-2 pozycje: czy jest MPZP i co oznacza przeznaczenie terenu "${geoData.mpzp?.purposes?.join('; ') || ''}". Wyjaśnij: plan = przewidywalność (wiadomo co może powstać obok); brak planu = ryzyko niespodzianek, decyzje WZ. Jeśli przeznaczenie to usługi/przemysł obok mieszkań — ostrzeż.>]
     },
     {
       "id": "komunikacja",
       "icon": "🚌",
       "title": "Komunikacja i dojazd",
       "status": "good|ok|bad|neutral",
-      "items": []
-    },
-    {
-      "id": "bezpieczenstwo",
-      "icon": "🛡️",
-      "title": "Bezpieczeństwo okolicy",
-      "status": "good|ok|bad|neutral",
-      "items": []
+      "items": [<2-3 pozycje na bazie REALNYCH danych: ${s?.busStopsCount ?? '?'} przystanków w 800 m (najbliższy ${fmtM(s?.nearestBusStopM)}), drogi główne, kolej. Dodaj wiedzę o komunikacji w ${geoData.city}.>]
     },
     {
       "id": "infrastruktura",
       "icon": "🏥",
       "title": "Infrastruktura w pobliżu",
       "status": "good|ok|bad|neutral",
-      "items": []
+      "items": [<2-4 pozycje z REALNYCH danych: szkoły (${s?.schoolsCount ?? '?'} w 1,5 km), sklepy (${s?.supermarketsCount ?? '?'}), apteki (${s?.pharmaciesCount ?? '?'}), parki (${s?.parksCount ?? '?'}).>]
+    },
+    {
+      "id": "bezpieczenstwo",
+      "icon": "🛡️",
+      "title": "Bezpieczeństwo okolicy",
+      "status": "good|ok|bad|neutral",
+      "items": [<1-2 pozycje na podstawie wiedzy o ${geoData.city} i tej okolicy — przestępczość, oświetlenie, charakter dzielnicy. Bądź wyważony.>]
     },
     {
       "id": "zagrozenia",
       "icon": "⚠️",
-      "title": "Zagrożenia i ograniczenia",
-      "status": "${geoData.floodRisk === 'high' ? 'bad' : geoData.floodRisk === 'medium' ? 'ok' : 'good'}",
+      "title": "Zagrożenia i uciążliwości",
+      "status": "${geoData.floodRisk === 'high' ? 'bad' : geoData.floodRisk === 'medium' ? 'ok' : geoData.floodRisk === 'unknown' ? 'neutral' : 'good'}",
       "items": [
         {
           "icon": "🌊",
-          "label": "Zagrożenie powodziowe",
-          "value": "${geoData.floodRisk === 'none' ? 'Brak zagrożenia' : geoData.floodRisk === 'low' ? 'Niskie zagrożenie (Q500)' : geoData.floodRisk === 'medium' ? 'Średnie zagrożenie (Q100)' : 'WYSOKIE ZAGROŻENIE (Q10)'}",
-          "meter": ${geoData.floodRisk === 'none' ? 5 : geoData.floodRisk === 'low' ? 25 : geoData.floodRisk === 'medium' ? 60 : 90},
-          "meterColor": "${geoData.floodRisk === 'none' ? '#2D7A4F' : geoData.floodRisk === 'low' ? '#8B9E6B' : geoData.floodRisk === 'medium' ? '#C8852A' : '#B94040'}",
-          "explain": "UZUPEŁNIJ wyjaśnienie co oznacza dla właściciela (ubezpieczenie, budowa, kredyt)"
-        }
+          "label": "Zagrożenie powodziowe (szacunek)",
+          "value": "${floodValue}",
+          "meter": ${floodMeter},
+          "meterColor": "${floodColor}",
+          "explain": "<wyjaśnij co to znaczy (ubezpieczenie, kredyt, budowa) + ZAWSZE dodaj: dokładne mapy na wody.isok.gov.pl>"
+        }<jeśli przemysł <800 m, linia WN <150 m lub inne uciążliwości — dodaj pozycje>
       ]
     },
     {
@@ -157,9 +234,9 @@ Zwróć TYLKO JSON (bez markdown, bez backticks, bez komentarzy) w tej strukturz
           "icon": "⚡",
           "label": "Roczna produkcja energii (1 kWp)",
           "value": "${geoData.solarPotential ? geoData.solarPotential.toFixed(0) + ' kWh/rok' : 'brak danych'}",
-          "meter": ${geoData.solarPotential ? Math.min(100, (geoData.solarPotential / 12) * 100) : 50},
-          "meterColor": "#C8852A",
-          "explain": "UZUPEŁNIJ ile to oznacza paneli i oszczędności w złotówkach rocznie"
+          "meter": ${geoData.solarPotential ? Math.min(100, Math.round((geoData.solarPotential / 1200) * 100)) : 50},
+          "meterColor": "#d97706",
+          "explain": "<ile to paneli i oszczędności w złotówkach rocznie przy obecnych cenach prądu>"
         }
       ]
     },
@@ -168,12 +245,12 @@ Zwróć TYLKO JSON (bez markdown, bez backticks, bez komentarzy) w tej strukturz
       "icon": "📈",
       "title": "Rynek nieruchomości",
       "status": "neutral",
-      "items": []
+      "items": [<2-3 pozycje: orientacyjne ceny za m² w ${geoData.city} i tej okolicy, trend, perspektywy. Zaznacz że to szacunki.>]
     }
   ]
 }
 
-Uzupełnij wszystkie sekcje konkretnymi pozycjami (2-4 per sekcja). Dla sekcji "komunikacja", "bezpieczenstwo", "infrastruktura", "rynek" — generuj dane na podstawie wiedzy o ${geoData.city} i tej dzielnicy. Bądź konkretny, nie ogólnikowy.`;
+Wypełnij WSZYSTKIE sekcje konkretnymi pozycjami. Cytuj realne odległości z danych. Bądź konkretny, nie ogólnikowy.`;
 }
 
 // Główna funkcja generowania raportu

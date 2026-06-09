@@ -3,12 +3,12 @@ interface Props {
   color?: string;       // #hex
 }
 
-export default function MeterBar({ value, color = '#2D7A4F' }: Props) {
+export default function MeterBar({ value, color = '#15803d' }: Props) {
   const clamped = Math.max(0, Math.min(100, value));
   return (
-    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+    <div className="h-1 bg-neutral-100 overflow-hidden">
       <div
-        className="h-full rounded-full transition-all duration-700"
+        className="h-full transition-all duration-700"
         style={{ width: `${clamped}%`, backgroundColor: color }}
       />
     </div>

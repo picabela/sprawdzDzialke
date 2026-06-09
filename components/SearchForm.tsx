@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
 import type { Report } from '@/lib/types';
 
 interface Props {
@@ -13,17 +13,17 @@ const EXAMPLE_ADDRESSES = [
   'ul. Nowy Świat 15, Warszawa',
   'ul. Floriańska 3, Kraków',
   'ul. Świdnicka 10, Wrocław',
-  'Gmina Piaseczno, działka 234/5',
 ];
 
 export default function SearchForm({ onReport, onLoading, onError }: Props) {
   const [address, setAddress] = useState('');
-  const [isPending, startTransition] = useTransition();
+  const [busy, setBusy] = useState(false);
 
   const handleSubmit = async (addr: string) => {
     const trimmed = addr.trim();
-    if (!trimmed || trimmed.length < 5) return;
+    if (!trimmed || trimmed.length < 5 || busy) return;
 
+    setBusy(true);
     onLoading(true);
     onError('');
 
@@ -45,35 +45,36 @@ export default function SearchForm({ onReport, onLoading, onError }: Props) {
     } catch {
       onError('Błąd sieci. Sprawdź połączenie i spróbuj ponownie.');
     } finally {
+      setBusy(false);
       onLoading(false);
     }
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
-      <div className="flex gap-2 bg-white rounded-2xl p-2 shadow-xl">
+    <div className="w-full">
+      <div className="flex border border-neutral-700 bg-neutral-900 focus-within:border-emerald-500 transition-colors">
         <input
           type="text"
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit(address)}
-          placeholder="Wpisz adres działki lub mieszkania..."
-          className="flex-1 px-4 py-3 text-base outline-none text-gray-800 placeholder-gray-400"
-          disabled={isPending}
+          placeholder="Wpisz adres, np. ul. Polna 12, Poznań"
+          className="flex-1 px-5 py-4 text-base outline-none bg-transparent text-white placeholder-neutral-500"
+          disabled={busy}
         />
         <button
-          onClick={() => startTransition(() => { handleSubmit(address); })}
-          disabled={isPending || address.length < 5}
-          className="bg-green-800 text-white px-6 py-3 rounded-xl font-medium text-sm
-                     hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed
+          onClick={() => handleSubmit(address)}
+          disabled={busy || address.trim().length < 5}
+          className="bg-emerald-600 text-white px-8 py-4 font-medium text-sm
+                     hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed
                      transition-colors whitespace-nowrap"
         >
-          {isPending ? 'Sprawdzam...' : 'Sprawdź →'}
+          {busy ? 'Sprawdzam…' : 'Sprawdź'}
         </button>
       </div>
 
       {/* Przykłady */}
-      <div className="flex flex-wrap gap-2 mt-3 justify-center">
+      <div className="flex flex-wrap gap-2 mt-4">
         {EXAMPLE_ADDRESSES.map((ex) => (
           <button
             key={ex}
@@ -81,13 +82,18 @@ export default function SearchForm({ onReport, onLoading, onError }: Props) {
               setAddress(ex);
               handleSubmit(ex);
             }}
-            className="text-xs px-3 py-1.5 rounded-full border border-white/20 text-white/70
-                       hover:bg-white/10 transition-colors"
+            className="text-xs px-3 py-1.5 border border-neutral-700 text-neutral-400
+                       hover:border-emerald-600 hover:text-emerald-400 transition-colors"
           >
             {ex}
           </button>
         ))}
       </div>
+
+      <p className="text-neutral-500 text-xs mt-4">
+        Podajesz adres z numerem lokalu? Lokalizujemy budynek — numer mieszkania nie zmienia danych
+        o lokalizacji.
+      </p>
     </div>
   );
 }

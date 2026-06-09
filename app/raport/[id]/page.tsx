@@ -32,19 +32,23 @@ export default async function RaportPage({ params }: PageProps) {
 
   return (
     <main>
-      <section className="bg-green-900 px-6 py-10 text-center">
-        <p className="text-green-300 text-xs tracking-widest uppercase mb-2 font-medium">
-          SprawdzDzialke.pl
-        </p>
-        <h1 className="text-white text-2xl md:text-3xl font-light">Raport o nieruchomości</h1>
+      <section className="bg-neutral-950 px-6 py-12">
+        <div className="max-w-3xl mx-auto">
+          <p className="text-emerald-500 text-xs tracking-[0.3em] uppercase mb-3 font-semibold">
+            SprawdzDzialke.pl
+          </p>
+          <h1 className="text-white text-2xl md:text-3xl font-semibold tracking-tight">
+            Raport o nieruchomości
+          </h1>
+        </div>
       </section>
 
       <ReportCard report={report} />
 
-      <div className="max-w-2xl mx-auto px-4 pb-12 text-center">
+      <div className="max-w-3xl mx-auto px-6 pb-12">
         <a
           href={`/api/pdf?id=${id}`}
-          className="inline-block bg-green-800 text-white px-8 py-3 rounded-xl font-medium text-sm hover:bg-green-700 transition-colors"
+          className="inline-block bg-neutral-950 text-white px-8 py-3.5 font-medium text-sm hover:bg-emerald-700 transition-colors"
         >
           Pobierz PDF
         </a>

@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react';
 
 const LOADING_MESSAGES = [
-  '📍 Lokalizuję adres...',
-  '🗺️ Sprawdzam dane katastralne...',
-  '💨 Analizuję jakość powietrza...',
-  '🌊 Weryfikuję zagrożenie powodziowe...',
-  '☀️ Obliczam potencjał solarny...',
-  '🤖 AI generuje raport...',
+  'Lokalizuję adres…',
+  'Sprawdzam dane katastralne…',
+  'Pobieram indeks jakości powietrza (GIOŚ)…',
+  'Sprawdzam plan zagospodarowania (MPZP)…',
+  'Mierzę odległość od rzek i torów…',
+  'Obliczam potencjał solarny…',
+  'AI składa raport…',
 ];
 
 export default function LoadingReport() {
@@ -17,27 +18,29 @@ export default function LoadingReport() {
   useEffect(() => {
     const timer = setInterval(() => {
       setMsgIndex((i) => (i + 1) % LOADING_MESSAGES.length);
-    }, 2000);
+    }, 2200);
     return () => clearInterval(timer);
   }, []);
 
   return (
-    <div className="text-center py-16 px-4">
-      {/* Animowane kropki */}
-      <div className="flex justify-center gap-2 mb-6">
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="w-3 h-3 rounded-full bg-green-800 animate-bounce"
-            style={{ animationDelay: `${i * 0.15}s` }}
-          />
-        ))}
-      </div>
+    <div className="max-w-3xl mx-auto px-6 py-20">
+      <div className="border border-neutral-200 bg-white p-10 text-center">
+        {/* Pasek aktywności */}
+        <div className="flex justify-center gap-1.5 mb-8">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="w-2 h-8 bg-emerald-600 animate-pulse"
+              style={{ animationDelay: `${i * 0.15}s` }}
+            />
+          ))}
+        </div>
 
-      <p className="text-gray-600 text-base transition-all duration-300">
-        {LOADING_MESSAGES[msgIndex]}
-      </p>
-      <p className="text-gray-400 text-sm mt-2">Zazwyczaj trwa to 10–20 sekund</p>
+        <p className="text-neutral-800 text-base font-medium">{LOADING_MESSAGES[msgIndex]}</p>
+        <p className="text-neutral-400 text-sm mt-2">
+          Odpytujemy 7 publicznych źródeł danych — zwykle 15–30 sekund
+        </p>
+      </div>
     </div>
   );
 }

@@ -1,72 +1,143 @@
-// Sprawdzamy zagrożenie powodziowe przez zapytanie WMS GetFeatureInfo
-// ISOK udostępnia mapy zagrożenia powodziowego dla scenariuszy Q10, Q100, Q500
+// Ocena zagrożenia powodziowego.
+// Oficjalne mapy ISOK nie są dostępne przez publiczne, stabilne API,
+// dlatego liczymy rzetelną heurystykę z dwóch źródeł:
+//   1. OpenStreetMap (Overpass) — odległość do najbliższej rzeki/kanału/strumienia
+//   2. Open-Meteo Elevation — różnica wysokości terenu względem rzeki
+// Wynik 'unknown' jest uczciwie raportowany gdy brak danych — nigdy nie
+// udajemy "bezpiecznie" gdy po prostu nie wiemy.
 
-export type FloodRisk = 'none' | 'low' | 'medium' | 'high';
+import { minDistanceToGeometry, type LatLng } from '../geo-utils';
+import { overpassQuery } from './overpass';
 
-export async function getFloodRisk(lat: number, lng: number): Promise<FloodRisk> {
-  // Konwersja WGS84 na EPSG:2180 (przybliżona, dla WMS)
-  // ISOK WMS akceptuje EPSG:4326 (WGS84)
+export type FloodRisk = 'none' | 'low' | 'medium' | 'high' | 'unknown';
 
-  // Budujemy zapytanie WMS GetFeatureInfo
-  // Warstwa: Q100 (powódź raz na 100 lat — standardowy benchmark)
-  const bbox = `${lng - 0.001},${lat - 0.001},${lng + 0.001},${lat + 0.001}`;
-
-  const url = new URL('https://wody.isok.gov.pl/geoserver/mzp/wms');
-  url.searchParams.set('SERVICE', 'WMS');
-  url.searchParams.set('VERSION', '1.1.1');
-  url.searchParams.set('REQUEST', 'GetFeatureInfo');
-  url.searchParams.set('LAYERS', 'mzp_q100');
-  url.searchParams.set('QUERY_LAYERS', 'mzp_q100');
-  url.searchParams.set('BBOX', bbox);
-  url.searchParams.set('WIDTH', '100');
-  url.searchParams.set('HEIGHT', '100');
-  url.searchParams.set('X', '50');
-  url.searchParams.set('Y', '50');
-  url.searchParams.set('INFO_FORMAT', 'application/json');
-  url.searchParams.set('SRS', 'EPSG:4326');
-
-  try {
-    const res = await fetch(url.toString(), {
-      signal: AbortSignal.timeout(6000),
-    });
-
-    if (!res.ok) return 'none';
-
-    const data = await res.json();
-    const features = data?.features || [];
-
-    if (features.length === 0) return 'none';
-
-    // Sprawdź głębokość wody w scenariuszu Q100
-    const depth = features[0]?.properties?.depth || 0;
-
-    if (depth > 2) return 'high';
-    if (depth > 0.5) return 'medium';
-    if (depth > 0) return 'low';
-    return 'none';
-  } catch {
-    // Jeśli ISOK nie odpowiada, nie blokuj — zwróć none
-    return 'none';
-  }
+export interface FloodAssessment {
+  risk: FloodRisk;
+  riverName?: string;        // nazwa najbliższego cieku
+  riverType?: string;        // river | canal | stream
+  riverDistanceM?: number;   // odległość w metrach
+  elevationM?: number;       // wysokość n.p.m. badanego punktu
+  elevationDiffM?: number;   // ile metrów nad poziomem rzeki
+  method: string;            // opis metody (do raportu)
 }
 
-// Uproszczona wersja — sprawdzenie przez GetMap i analizę pikseli
-// (alternatywna metoda gdy GetFeatureInfo nie działa)
-export async function getFloodRiskSimple(lat: number, lng: number): Promise<FloodRisk> {
-  // Pobierz kafelek PNG i sprawdź kolor w punkcie
-  // Niebieski = zagrożony, biały/przezroczysty = bezpieczny
-  // Ta metoda jest mniej precyzyjna ale bardziej niezawodna
-  const delta = 0.002;
-  const url = `https://wody.isok.gov.pl/geoserver/mzp/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image/png&TRANSPARENT=true&LAYERS=mzp_q100&BBOX=${lng - delta},${lat - delta},${lng + delta},${lat + delta}&WIDTH=100&HEIGHT=100&SRS=EPSG:4326`;
+interface OverpassWay {
+  tags?: Record<string, string>;
+  geometry?: LatLng[];
+}
 
+export async function getFloodAssessment(lat: number, lng: number): Promise<FloodAssessment> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return 'none';
-    // Analiza pikseli wymagałaby canvas/sharp — uproszczenie: sprawdzamy rozmiar odpowiedzi
-    // Mały PNG (< 1KB) = pusty = brak zagrożenia, duży = są dane = zagrożenie
-    const buffer = await res.arrayBuffer();
-    return buffer.byteLength > 1500 ? 'medium' : 'none';
+    // Krok 1: znajdź cieki wodne w okolicy (rzeki/kanały do 1500 m, strumienie do 500 m)
+    const query = `[out:json][timeout:15];
+(
+  way["waterway"~"^(river|canal)$"](around:1500,${lat},${lng});
+  way["waterway"="stream"](around:500,${lat},${lng});
+  way["natural"="water"]["water"~"^(river|lake|reservoir)$"](around:800,${lat},${lng});
+);
+out geom 60;`;
+
+    const data = (await overpassQuery(query, 20000)) as { elements?: OverpassWay[] } | null;
+    if (!data) return { risk: 'unknown', method: 'Brak odpowiedzi z OpenStreetMap' };
+
+    const elements: OverpassWay[] = data.elements || [];
+
+    if (elements.length === 0) {
+      // Brak jakiejkolwiek wody w promieniu 1,5 km — ryzyko znikome
+      return {
+        risk: 'none',
+        method: 'Brak rzek, kanałów i zbiorników w promieniu 1,5 km (OpenStreetMap)',
+      };
+    }
+
+    // Krok 2: oceniamy KAŻDY ciek osobno i bierzemy najgroźniejszy.
+    // Duża rzeka 1 km dalej jest istotniejsza niż strumyk 300 m obok.
+    const RISK_ORDER: FloodRisk[] = ['none', 'low', 'medium', 'high'];
+
+    function riskByDistance(type: string, dist: number): FloodRisk {
+      const isMajor = type === 'river' || type === 'canal';
+      if (isMajor) {
+        if (dist < 150) return 'high';
+        if (dist < 500) return 'medium';
+        if (dist < 1200) return 'low';
+        return 'none';
+      }
+      if (dist < 80) return 'medium';
+      if (dist < 250) return 'low';
+      return 'none';
+    }
+
+    let worst: { risk: FloodRisk; dist: number; name: string; type: string; point: LatLng } | null =
+      null;
+    for (const el of elements) {
+      const geom = el.geometry || [];
+      if (geom.length === 0) continue;
+      const dist = minDistanceToGeometry(lat, lng, geom);
+      const type = el.tags?.waterway || el.tags?.water || 'water';
+      const risk = riskByDistance(type, dist);
+
+      const better =
+        !worst ||
+        RISK_ORDER.indexOf(risk) > RISK_ORDER.indexOf(worst.risk) ||
+        (RISK_ORDER.indexOf(risk) === RISK_ORDER.indexOf(worst.risk) && dist < worst.dist);
+
+      if (better) {
+        // najbliższy wierzchołek tego cieku (do pomiaru wysokości lustra wody)
+        let bestPt = geom[0];
+        let bestD = Infinity;
+        for (const p of geom) {
+          const d = minDistanceToGeometry(lat, lng, [p]);
+          if (d < bestD) {
+            bestD = d;
+            bestPt = p;
+          }
+        }
+        worst = { risk, dist, name: el.tags?.name || '', type, point: bestPt };
+      }
+    }
+
+    if (!worst) return { risk: 'unknown', method: 'Nie udało się zmierzyć odległości od wody' };
+
+    // Krok 3: różnica wysokości terenu (punkt vs rzeka) — może obniżyć ryzyko
+    let elevation: number | undefined;
+    let elevationDiff: number | undefined;
+    try {
+      const elevRes = await fetch(
+        `https://api.open-meteo.com/v1/elevation?latitude=${lat},${worst.point.lat}&longitude=${lng},${worst.point.lon}`,
+        { signal: AbortSignal.timeout(6000) }
+      );
+      if (elevRes.ok) {
+        const elevData = await elevRes.json();
+        const [pointElev, riverElev] = elevData?.elevation || [];
+        if (typeof pointElev === 'number' && typeof riverElev === 'number') {
+          elevation = pointElev;
+          elevationDiff = Math.round((pointElev - riverElev) * 10) / 10;
+        }
+      }
+    } catch {
+      // wysokość opcjonalna — heurystyka zadziała na samej odległości
+    }
+
+    // Krok 4: korekta o wysokość — teren wyraźnie nad rzeką obniża ryzyko
+    let risk = worst.risk;
+    if (elevationDiff !== undefined) {
+      if (elevationDiff >= 20) risk = 'none';
+      else if (elevationDiff >= 12 && RISK_ORDER.indexOf(risk) > RISK_ORDER.indexOf('low'))
+        risk = 'low';
+      else if (elevationDiff >= 8 && risk === 'high') risk = 'medium';
+    }
+
+    return {
+      risk,
+      riverName: worst.name || undefined,
+      riverType: worst.type,
+      riverDistanceM: worst.dist,
+      elevationM: elevation,
+      elevationDiffM: elevationDiff,
+      method:
+        'Szacunek na podstawie odległości od cieków (OpenStreetMap) i różnicy wysokości terenu (Open-Meteo). To nie jest oficjalna mapa zagrożenia powodziowego ISOK.',
+    };
   } catch {
-    return 'none';
+    return { risk: 'unknown', method: 'Błąd pobierania danych o wodach' };
   }
 }

@@ -43,7 +43,7 @@ export async function generateJson(prompt: string): Promise<string> {
   if (provider === 'anthropic') {
     const message = await anthropicClient().messages.create({
       model: ANTHROPIC_MODEL,
-      max_tokens: 2000,
+      max_tokens: 4000,
       messages: [{ role: 'user', content: prompt }],
     });
     const firstTextBlock = message.content.find((b) => b.type === 'text');
@@ -53,7 +53,7 @@ export async function generateJson(prompt: string): Promise<string> {
   // Domyślnie: OpenAI. response_format wymusza poprawny JSON.
   const completion = await openaiClient().chat.completions.create({
     model: OPENAI_MODEL,
-    max_tokens: 2000,
+    max_tokens: 4000,
     response_format: { type: 'json_object' },
     messages: [{ role: 'user', content: prompt }],
   });
