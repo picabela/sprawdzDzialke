@@ -26,15 +26,33 @@ interface ResolvedLocation {
   parcel?: GeoData['parcel'];
 }
 
+// Cache zebranych danych geo per punkt (~11 m dokładności).
+// Powtórny raport dla tej samej okolicy nie zużywa limitów publicznych API.
+const geoCache = new Map<string, { data: GeoData; ts: number }>();
+const GEO_CACHE_TTL = 30 * 60 * 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 // Zbiera dane ze wszystkich API dla ustalonej lokalizacji.
 async function collectGeoData(loc: ResolvedLocation): Promise<GeoData> {
   const { lat, lng } = loc;
 
+  const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  const hit = geoCache.get(cacheKey);
+  if (hit && Date.now() - hit.ts < GEO_CACHE_TTL) {
+    // nadpisz tylko metadane wejścia (adres/działka mogą się różnić dla tego samego punktu)
+    return { ...hit.data, address: loc.displayName, parcel: loc.parcel ?? hit.data.parcel };
+  }
+
   // Wszystkie zapytania Overpass (otoczenie, powódź, rozwój) wykonujemy
-  // po kolei, żeby nie przekroczyć limitu równoległych zapytań per IP.
+  // po kolei z odstępem, żeby nie przekroczyć limitu zapytań per IP.
   const overpassChain = (async () => {
     const surr = await getSurroundings(lat, lng).catch(() => null);
+    await sleep(1200);
     const flood = await getFloodAssessment(lat, lng).catch(() => null);
+    await sleep(1200);
     const development = await getDevelopmentInfo(lat, lng).catch(() => null);
     return { surr, flood, development };
   })();
@@ -76,7 +94,7 @@ async function collectGeoData(loc: ResolvedLocation): Promise<GeoData> {
         }
       : undefined;
 
-  return {
+  const out: GeoData = {
     address: loc.displayName,
     addressNormalized: loc.displayName.toLowerCase().trim(),
     city: loc.city,
@@ -122,6 +140,9 @@ async function collectGeoData(loc: ResolvedLocation): Promise<GeoData> {
     prices: pricesData ?? undefined,
     surroundings: surr ?? undefined,
   };
+
+  geoCache.set(cacheKey, { data: out, ts: Date.now() });
+  return out;
 }
 
 function fmtM(m?: number): string {
@@ -161,7 +182,7 @@ function buildPrompt(address: string, geoData: GeoData): string {
       `${ah.summerAvgPm25 !== undefined ? `, LATEM (VI-VIII) ${ah.summerAvgPm25} µg/m³` : ''}` +
       `${ah.worstMonth ? `, najgorszy miesiąc: ${monthName(ah.worstMonth.month)} (${ah.worstMonth.pm25} µg/m³)` : ''}` +
       `${ah.whoYearExceededTimes ? `. Norma roczna WHO to 5 µg/m³ — tu przekroczona ${ah.whoYearExceededTimes}×` : ''}` +
-      `. WAŻNE: smog jest sezonowy — opisz RÓŻNICĘ lato/zima, bo mieszka się tam cały rok, nie tylko w dniu wyszukiwania.`
+      `. Podaj różnicę lato/zima jako fakt z liczbami.`
     : 'Brak danych całorocznych.';
 
   const pricesContext = geoData.prices
@@ -272,7 +293,8 @@ ZASADY:
 4. Jeśli danych brakuje — napisz uczciwie "brak danych" i co sprawdzić samodzielnie; NIE wymyślaj i NIE udawaj że jest bezpiecznie
 5. Bliska kolej (<300 m) i droga główna (<300 m) = realny hałas; przemysł <500 m, linie WN <100 m i lotnisko <6 km = potencjalna uciążliwość — uwzględnij to w sekcjach hałas/zagrożenia
 6. Status: "good" = zielony (dobrze), "ok" = żółty (przeciętnie), "bad" = czerwony (uwaga), "neutral" = szary
-7. Zwróć obiekt JSON o DOKŁADNIE tej strukturze co poniżej
+7. TON: neutralny i rzeczowy. Fakty, liczby i ich konsekwencje. BEZ oczywistych porad, BEZ moralizowania i BEZ zwrotów w stylu "pamiętaj, że...", "warto zwrócić uwagę...", "mieszka się tam cały rok...", "zanim kupisz...". Czytelnik sam wyciągnie wnioski.
+8. Zwróć obiekt JSON o DOKŁADNIE tej strukturze co poniżej
 
 Zwróć TYLKO JSON (bez markdown, bez backticks) w tej strukturze:
 {
@@ -292,7 +314,7 @@ Zwróć TYLKO JSON (bez markdown, bez backticks) w tej strukturze:
       "id": "powietrze",
       "title": "Jakość powietrza",
       "status": "good|ok|bad|neutral",
-      "items": [<2-3 pozycje. (1) AKTUALNY indeks GIOŚ: "${geoData.gios?.indexCategory || 'brak danych'}" ze stacji ${geoData.gios?.stationName || '—'} (${geoData.gios?.distanceKm ?? '—'} km). (2) OBOWIĄZKOWO pozycja "Smog zimą vs latem" oparta na danych całorocznych: ${ah ? `lato ${ah.summerAvgPm25} µg/m³ vs zima ${ah.winterAvgPm25} µg/m³, najgorszy ${ah.worstMonth ? monthName(ah.worstMonth.month) : '—'}` : 'brak'} — wyjaśnij, że kto szuka latem, nie zobaczy zimowego smogu, a mieszka się cały rok. Dla tej pozycji ustaw meter na bazie średniej rocznej PM2.5 (${ah?.yearAvgPm25 ?? '?'}: <12 zielony #15803d, 12-25 #d97706, >25 #dc2626).>]
+      "items": [<2-3 pozycje. (1) AKTUALNY indeks GIOŚ: "${geoData.gios?.indexCategory || 'brak danych'}" ze stacji ${geoData.gios?.stationName || '—'} (${geoData.gios?.distanceKm ?? '—'} km). (2) OBOWIĄZKOWO pozycja "Smog zimą vs latem" oparta na danych całorocznych: ${ah ? `lato ${ah.summerAvgPm25} µg/m³ vs zima ${ah.winterAvgPm25} µg/m³, najgorszy ${ah.worstMonth ? monthName(ah.worstMonth.month) : '—'}` : 'brak'} — podaj liczby i krótko ich skutek (np. sezon grzewczy podnosi stężenia), bez pouczania czytelnika. Dla tej pozycji ustaw meter na bazie średniej rocznej PM2.5 (${ah?.yearAvgPm25 ?? '?'}: <12 zielony #15803d, 12-25 #d97706, >25 #dc2626).>]
     },
     {
       "id": "planowanie",

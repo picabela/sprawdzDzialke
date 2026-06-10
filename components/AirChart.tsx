@@ -64,17 +64,16 @@ export default function AirChart({ air }: Props) {
         </div>
 
         <p className="text-xs text-neutral-500 leading-relaxed mt-4">
-          Norma roczna WHO to 5 µg/m³.{' '}
+          Norma roczna WHO: 5 µg/m³.{' '}
           {air.worstMonth && (
             <>
-              Najgorszy miesiąc to{' '}
+              Najwyższe stężenia:{' '}
               <strong className="text-neutral-700">
                 {['styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec', 'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'][air.worstMonth.month - 1]}
               </strong>{' '}
-              ({air.worstMonth.pm25} µg/m³).{' '}
+              ({air.worstMonth.pm25} µg/m³).
             </>
           )}
-          W mieszkaniu będziesz cały rok — patrz na zimę, nie tylko na dzień wyszukiwania.
         </p>
       </div>
     </div>
