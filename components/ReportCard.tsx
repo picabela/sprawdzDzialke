@@ -3,12 +3,20 @@ import ScoreBadge from './ScoreBadge';
 import ReportSection from './ReportSection';
 import MapPreview from './MapPreview';
 import DownloadPdfButton from './DownloadPdfButton';
+import AirChart from './AirChart';
+import NeighborhoodExplorer from './NeighborhoodExplorer';
+import ParcelInfo from './ParcelInfo';
 
 interface Props {
   report: Report;
 }
 
 export default function ReportCard({ report }: Props) {
+  const geo = report.geoData;
+  const air = geo?.airHistory;
+  const categories = geo?.surroundings?.categories;
+  const parcel = geo?.parcel;
+
   return (
     <div className="max-w-3xl mx-auto px-6 py-12" id="report-content">
       {/* Nagłówek raportu */}
@@ -36,10 +44,25 @@ export default function ReportCard({ report }: Props) {
         </div>
       )}
 
-      {/* Sekcje */}
+      {/* Dane działki (jeśli mamy) */}
+      {parcel && <ParcelInfo parcel={parcel} />}
+
+      {/* Sekcje opisowe + bloki z twardymi danymi wstrzykiwane tematycznie */}
       {report.sections.map((section, i) => (
-        <ReportSection key={section.id} section={section} index={i} />
+        <div key={section.id}>
+          <ReportSection section={section} index={i} />
+          {section.id === 'powietrze' && air && <AirChart air={air} />}
+          {section.id === 'infrastruktura' && categories && (
+            <NeighborhoodExplorer categories={categories} />
+          )}
+        </div>
       ))}
+
+      {/* Gdyby sekcji tematycznych nie było — pokaż bloki na końcu */}
+      {air && !report.sections.some((s) => s.id === 'powietrze') && <AirChart air={air} />}
+      {categories && !report.sections.some((s) => s.id === 'infrastruktura') && (
+        <NeighborhoodExplorer categories={categories} />
+      )}
     </div>
   );
 }

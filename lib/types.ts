@@ -3,6 +3,20 @@ export interface Coordinates {
   lng: number;
 }
 
+export interface Poi {
+  name: string;
+  distanceM: number;
+  lat: number;
+  lng: number;
+  detail?: string;
+}
+
+export interface PoiCategory {
+  count: number;
+  nearestM?: number;
+  items: Poi[];
+}
+
 export interface GeoData {
   address: string;
   addressNormalized: string;
@@ -11,7 +25,16 @@ export interface GeoData {
   province: string;
   coords: Coordinates;
   apartmentStripped?: boolean; // adres zawierał numer lokalu (lokalizujemy budynek)
-  parcelId?: string;         // ID działki z GUGiK ULDK
+  parcel?: {                 // dane działki ewidencyjnej (GUGiK ULDK)
+    parcelId: string;
+    parcelNumber: string;
+    region: string;
+    commune: string;
+    county: string;
+    voivodeship: string;
+    areaM2?: number;
+  };
+  parcelId?: string;         // ID działki z GUGiK ULDK (legacy)
   parcelArea?: number;       // Powierzchnia działki w m²
   parcelType?: string;       // Typ użytku (Br, R, B, etc.)
   floodRisk?: 'none' | 'low' | 'medium' | 'high' | 'unknown';
@@ -30,6 +53,22 @@ export interface GeoData {
     distanceKm?: number;
     indexCategory?: string;
     indexValue?: number;
+  };
+  airHistory?: {             // całoroczny przebieg PM2.5/PM10 (Open-Meteo CAMS)
+    current?: { pm25?: number; pm10?: number };
+    monthly: { month: number; pm25: number; pm10: number }[];
+    yearAvgPm25?: number;
+    winterAvgPm25?: number;
+    summerAvgPm25?: number;
+    worstMonth?: { month: number; pm25: number };
+    whoYearExceededTimes?: number;
+  };
+  prices?: {                 // ceny transakcyjne GUS BDL
+    pricePerM2: number;
+    year: number;
+    level: 'powiat' | 'województwo';
+    unitName: string;
+    source: string;
   };
   mpzp?: {                   // miejscowy plan zagospodarowania przestrzennego
     covered: boolean;
@@ -76,6 +115,7 @@ export interface GeoData {
     nearestSchoolM?: number;
     nearestSupermarketM?: number;
     nearestBusStopM?: number;
+    categories?: Record<string, PoiCategory>; // pełne kategorie POI z nazwami
   };
   walkScore?: number;        // izochrone 15min pieszo — liczba POI
 }

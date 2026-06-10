@@ -81,3 +81,79 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
     apartmentStripped: stripped,
   };
 }
+
+export interface AddressSuggestion {
+  label: string; // czytelny adres do pokazania
+  lat: number;
+  lng: number;
+  city: string;
+}
+
+// Podpowiedzi adresów (autouzupełnianie) — kilka dopasowań z Nominatim.
+export async function suggestAddresses(query: string): Promise<AddressSuggestion[]> {
+  const q = stripApartment(query).cleaned;
+  if (q.length < 3) return [];
+
+  const url = new URL('https://nominatim.openstreetmap.org/search');
+  url.searchParams.set('q', q);
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('limit', '6');
+  url.searchParams.set('countrycodes', 'pl');
+  url.searchParams.set('addressdetails', '1');
+
+  try {
+    const res = await fetch(url.toString(), {
+      headers: { 'User-Agent': 'SprawdzDzialke/1.0 (kontakt@sprawdzdzialke.pl)' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as NominatimPlace[];
+    const seen = new Set<string>();
+    const out: AddressSuggestion[] = [];
+    for (const r of data) {
+      const label = r.display_name;
+      if (!label || seen.has(label)) continue;
+      seen.add(label);
+      out.push({
+        label,
+        lat: parseFloat(r.lat),
+        lng: parseFloat(r.lon),
+        city: r.address?.city || r.address?.town || r.address?.village || '',
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+// Odwrotne geokodowanie — z punktu (klik na mapie / środek działki) na adres.
+export async function reverseGeocode(lat: number, lng: number): Promise<GeocodeResult | null> {
+  const url = new URL('https://nominatim.openstreetmap.org/reverse');
+  url.searchParams.set('lat', String(lat));
+  url.searchParams.set('lon', String(lng));
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('addressdetails', '1');
+  url.searchParams.set('zoom', '18');
+
+  try {
+    const res = await fetch(url.toString(), {
+      headers: { 'User-Agent': 'SprawdzDzialke/1.0 (kontakt@sprawdzdzialke.pl)' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const r = (await res.json()) as NominatimPlace & { error?: string };
+    if (!r || r.error || !r.display_name) return null;
+    return {
+      lat,
+      lng,
+      displayName: r.display_name,
+      city: r.address?.city || r.address?.town || r.address?.village || '',
+      county: r.address?.county || '',
+      province: r.address?.state || '',
+      country: r.address?.country_code || '',
+    };
+  } catch {
+    return null;
+  }
+}

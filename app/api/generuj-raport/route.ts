@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateReport } from '@/lib/report-generator';
+import {
+  generateReport,
+  generateReportFromCoords,
+  generateReportFromParcel,
+} from '@/lib/report-generator';
 import { createClient } from '@/lib/supabase';
 
 // Rate limiting prosty (w produkcji użyj Upstash Redis)
@@ -37,24 +41,45 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Pobierz adres
-  let address: string;
+  // Pobierz wejście: adres ALBO współrzędne (klik na mapie) ALBO numer działki
+  let mode: 'address' | 'coords' | 'parcel';
+  let address = '';
+  let lat = 0;
+  let lng = 0;
+  let parcelId = '';
   try {
     const body = await req.json();
-    address = body.address?.trim();
-    if (!address || address.length < 5) {
-      return NextResponse.json({ error: 'Podaj adres (minimum 5 znaków).' }, { status: 400 });
+    if (typeof body.lat === 'number' && typeof body.lng === 'number') {
+      mode = 'coords';
+      lat = body.lat;
+      lng = body.lng;
+    } else if (typeof body.parcelId === 'string' && body.parcelId.trim().length >= 6) {
+      mode = 'parcel';
+      parcelId = body.parcelId.trim();
+    } else {
+      mode = 'address';
+      address = body.address?.trim() || '';
+      if (address.length < 5) {
+        return NextResponse.json({ error: 'Podaj adres (minimum 5 znaków).' }, { status: 400 });
+      }
     }
   } catch {
     return NextResponse.json({ error: 'Nieprawidłowe żądanie.' }, { status: 400 });
   }
 
   try {
-    // Generuj raport
-    const report = await generateReport(address);
+    // Generuj raport zależnie od trybu wejścia
+    const report =
+      mode === 'coords'
+        ? await generateReportFromCoords(lat, lng)
+        : mode === 'parcel'
+          ? await generateReportFromParcel(parcelId)
+          : await generateReport(address);
     if (!report) {
       return NextResponse.json({ error: 'Nie można wygenerować raportu.' }, { status: 500 });
     }
+    // etykieta do zapisu w bazie
+    address = report.address || address || `${lat},${lng}`;
 
     // Zapisz do Supabase
     const supabase = createClient();

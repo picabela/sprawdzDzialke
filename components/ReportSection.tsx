@@ -1,10 +1,11 @@
 import type { ReportSection as ReportSectionType } from '@/lib/types';
+import Icon, { SECTION_ICONS } from './Icon';
 
 const STATUS_STYLES = {
-  good: { tag: 'text-emerald-700 border-emerald-600', dot: 'bg-emerald-600', label: 'Dobry' },
-  ok: { tag: 'text-amber-700 border-amber-600', dot: 'bg-amber-500', label: 'Przeciętny' },
-  bad: { tag: 'text-red-700 border-red-600', dot: 'bg-red-600', label: 'Uwaga' },
-  neutral: { tag: 'text-neutral-500 border-neutral-300', dot: 'bg-neutral-400', label: 'Info' },
+  good: { tag: 'text-emerald-700 border-emerald-600', dot: 'bg-emerald-600', icon: 'text-emerald-700 bg-emerald-50', label: 'Dobry' },
+  ok: { tag: 'text-amber-700 border-amber-600', dot: 'bg-amber-500', icon: 'text-amber-700 bg-amber-50', label: 'Przeciętny' },
+  bad: { tag: 'text-red-700 border-red-600', dot: 'bg-red-600', icon: 'text-red-700 bg-red-50', label: 'Uwaga' },
+  neutral: { tag: 'text-neutral-500 border-neutral-300', dot: 'bg-neutral-400', icon: 'text-neutral-600 bg-neutral-100', label: 'Info' },
 };
 
 interface Props {
@@ -14,11 +15,15 @@ interface Props {
 
 export default function ReportSection({ section, index }: Props) {
   const style = STATUS_STYLES[section.status] ?? STATUS_STYLES.neutral;
+  const iconName = SECTION_ICONS[section.id] ?? 'check';
 
   return (
     <div className="border border-neutral-200 bg-white mb-4 break-inside-avoid">
       {/* Nagłówek sekcji */}
-      <div className="flex items-center gap-4 px-6 py-4 border-b border-neutral-100">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-neutral-100">
+        <span className={`flex items-center justify-center w-8 h-8 ${style.icon}`}>
+          <Icon name={iconName} size={18} />
+        </span>
         {index !== undefined && (
           <span className="text-[11px] font-semibold text-neutral-300 tabular-nums tracking-wider">
             {String(index + 1).padStart(2, '0')}
