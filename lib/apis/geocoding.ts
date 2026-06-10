@@ -20,11 +20,24 @@ function stripApartment(address: string): { cleaned: string; stripped: boolean }
   return { cleaned, stripped: cleaned !== address.trim() };
 }
 
-export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
-  const { cleaned, stripped } = stripApartment(address);
+interface NominatimPlace {
+  lat: string;
+  lon: string;
+  display_name: string;
+  address?: {
+    city?: string;
+    town?: string;
+    village?: string;
+    county?: string;
+    state?: string;
+    country_code?: string;
+  };
+}
 
+// Pojedyncze zapytanie do Nominatim
+async function queryNominatim(q: string): Promise<NominatimPlace | null> {
   const url = new URL('https://nominatim.openstreetmap.org/search');
-  url.searchParams.set('q', cleaned);
+  url.searchParams.set('q', q);
   url.searchParams.set('format', 'json');
   url.searchParams.set('limit', '1');
   url.searchParams.set('countrycodes', 'pl');
@@ -39,9 +52,24 @@ export async function geocodeAddress(address: string): Promise<GeocodeResult | n
 
   if (!res.ok) return null;
   const data = await res.json();
-  if (!data || data.length === 0) return null;
+  return data && data.length > 0 ? data[0] : null;
+}
 
-  const result = data[0];
+// Nominatim często nie znajduje adresów z prefiksem typu ulicy ("ul. Polna" vs "Polna"),
+// więc przy braku wyniku ponawiamy zapytanie bez prefiksu.
+function stripStreetPrefix(address: string): string {
+  return address.replace(/\b(ul|ulica|al|aleja|aleje|pl|plac|os|osiedle)\.?\s+/gi, '').trim();
+}
+
+export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
+  const { cleaned, stripped } = stripApartment(address);
+
+  let result = await queryNominatim(cleaned);
+  if (!result) {
+    const noPrefix = stripStreetPrefix(cleaned);
+    if (noPrefix !== cleaned) result = await queryNominatim(noPrefix);
+  }
+  if (!result) return null;
   return {
     lat: parseFloat(result.lat),
     lng: parseFloat(result.lon),

@@ -56,7 +56,7 @@ function renderReportHtml(report: Report): string {
         .map(
           (item) => `
         <div class="item">
-          <div class="item-label">${esc(item.icon)} ${esc(item.label)}</div>
+          <div class="item-label">${esc(item.label)}</div>
           <div class="item-value">${esc(item.value)}</div>
           ${
             item.meter !== undefined
@@ -69,7 +69,7 @@ function renderReportHtml(report: Report): string {
         .join('');
       return `
       <section class="report-section">
-        <h2>${esc(section.icon)} ${esc(section.title)}</h2>
+        <h2>${esc(section.title)}</h2>
         ${items}
       </section>`;
     })
@@ -105,7 +105,7 @@ function renderReportHtml(report: Report): string {
   </p>
   ${sections}
   <p style="font-size:11px;color:#9ca3af;margin-top:24px;">
-    Raport ma charakter informacyjny i jest generowany przez AI na podstawie publicznie dostępnych danych.
+    Raport ma charakter informacyjny i powstaje automatycznie na podstawie publicznie dostępnych danych.
   </p>
 </body>
 </html>`;

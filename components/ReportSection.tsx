@@ -1,61 +1,66 @@
 import type { ReportSection as ReportSectionType } from '@/lib/types';
 
 const STATUS_STYLES = {
-  good: { tag: 'text-emerald-700 border-emerald-600', label: 'Dobry' },
-  ok: { tag: 'text-amber-700 border-amber-600', label: 'Przeciętny' },
-  bad: { tag: 'text-red-700 border-red-600', label: 'Uwaga' },
-  neutral: { tag: 'text-neutral-500 border-neutral-300', label: 'Info' },
+  good: { tag: 'text-emerald-700 border-emerald-600', dot: 'bg-emerald-600', label: 'Dobry' },
+  ok: { tag: 'text-amber-700 border-amber-600', dot: 'bg-amber-500', label: 'Przeciętny' },
+  bad: { tag: 'text-red-700 border-red-600', dot: 'bg-red-600', label: 'Uwaga' },
+  neutral: { tag: 'text-neutral-500 border-neutral-300', dot: 'bg-neutral-400', label: 'Info' },
 };
 
 interface Props {
   section: ReportSectionType;
+  index?: number; // numer porządkowy sekcji (01, 02, …)
 }
 
-export default function ReportSection({ section }: Props) {
+export default function ReportSection({ section, index }: Props) {
   const style = STATUS_STYLES[section.status] ?? STATUS_STYLES.neutral;
 
   return (
-    <div className="border border-neutral-200 bg-white p-6 mb-4">
+    <div className="border border-neutral-200 bg-white mb-4 break-inside-avoid">
       {/* Nagłówek sekcji */}
-      <div className="flex items-center gap-3 mb-5">
-        <span className="text-xl">{section.icon}</span>
-        <h3 className="font-semibold text-neutral-900 text-base tracking-tight">
+      <div className="flex items-center gap-4 px-6 py-4 border-b border-neutral-100">
+        {index !== undefined && (
+          <span className="text-[11px] font-semibold text-neutral-300 tabular-nums tracking-wider">
+            {String(index + 1).padStart(2, '0')}
+          </span>
+        )}
+        <h3 className="font-semibold text-neutral-950 text-base tracking-tight">
           {section.title}
         </h3>
         <span
-          className={`ml-auto text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 border ${style.tag}`}
+          className={`ml-auto inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 border ${style.tag}`}
         >
+          <span className={`w-1.5 h-1.5 ${style.dot}`} />
           {style.label}
         </span>
       </div>
 
       {/* Pozycje */}
-      <div className="space-y-5">
+      <div className="px-6 py-5 space-y-5">
         {section.items.map((item, i) => (
-          <div key={i} className={`flex gap-4 ${i > 0 ? 'pt-5 border-t border-neutral-100' : ''}`}>
-            <span className="text-lg mt-0.5 flex-shrink-0">{item.icon}</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-1">
+          <div key={i} className={i > 0 ? 'pt-5 border-t border-neutral-100' : ''}>
+            <div className="flex items-baseline justify-between gap-4 mb-1.5">
+              <p className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
                 {item.label}
               </p>
-              <p className="text-sm font-semibold text-neutral-900 mb-2">{item.value}</p>
-
-              {/* Pasek postępu */}
-              {item.meter !== undefined && (
-                <div className="h-1 bg-neutral-100 mb-2.5 overflow-hidden">
-                  <div
-                    className="h-full transition-all duration-700"
-                    style={{
-                      width: `${Math.max(0, Math.min(100, item.meter))}%`,
-                      backgroundColor: item.meterColor || '#15803d',
-                    }}
-                  />
-                </div>
-              )}
-
-              {/* Wyjaśnienie */}
-              <p className="text-sm text-neutral-500 leading-relaxed">{item.explain}</p>
             </div>
+            <p className="text-sm font-semibold text-neutral-950 mb-2">{item.value}</p>
+
+            {/* Pasek pomiaru */}
+            {item.meter !== undefined && (
+              <div className="h-1 bg-neutral-100 mb-2.5 overflow-hidden">
+                <div
+                  className="h-full transition-all duration-700"
+                  style={{
+                    width: `${Math.max(0, Math.min(100, item.meter))}%`,
+                    backgroundColor: item.meterColor || '#15803d',
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Wyjaśnienie */}
+            <p className="text-sm text-neutral-500 leading-relaxed">{item.explain}</p>
           </div>
         ))}
       </div>

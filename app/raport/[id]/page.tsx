@@ -32,7 +32,7 @@ export default async function RaportPage({ params }: PageProps) {
 
   return (
     <main>
-      <section className="bg-neutral-950 px-6 py-12">
+      <section className="bg-neutral-950 px-6 py-12 print:hidden">
         <div className="max-w-3xl mx-auto">
           <p className="text-emerald-500 text-xs tracking-[0.3em] uppercase mb-3 font-semibold">
             SprawdzDzialke.pl
@@ -44,15 +44,6 @@ export default async function RaportPage({ params }: PageProps) {
       </section>
 
       <ReportCard report={report} />
-
-      <div className="max-w-3xl mx-auto px-6 pb-12">
-        <a
-          href={`/api/pdf?id=${id}`}
-          className="inline-block bg-neutral-950 text-white px-8 py-3.5 font-medium text-sm hover:bg-emerald-700 transition-colors"
-        >
-          Pobierz PDF
-        </a>
-      </div>
     </main>
   );
 }

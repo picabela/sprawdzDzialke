@@ -37,6 +37,31 @@ export interface GeoData {
     planName?: string;
     maxHeight?: string;
   };
+  sopo?: {                   // osuwiska (SOPO, PIG-PIB)
+    checked: boolean;
+    onLandslide: boolean;
+    activity?: string;
+    inThreatZone: boolean;
+  };
+  demographics?: {           // demografia gminy (GUS BDL)
+    unitName?: string;
+    population?: number;
+    populationYear?: number;
+    trendPct?: number;
+    trendYears?: number;
+    density?: number;
+  };
+  development?: {            // rozwój okolicy (OpenStreetMap)
+    roadConstructionName?: string;
+    roadConstructionDistanceM?: number;
+    roadProposed?: boolean;
+    constructionSitesCount?: number;
+    airportName?: string;
+    airportDistanceM?: number;
+    protectedAreaName?: string;
+    protectedAreaType?: string;
+    protectedAreaDistanceM?: number;
+  };
   surroundings?: {           // otoczenie z OpenStreetMap
     railwayDistanceM?: number;
     majorRoadDistanceM?: number;
@@ -56,7 +81,7 @@ export interface GeoData {
 }
 
 export interface ReportItem {
-  icon: string;
+  icon?: string;             // legacy — nieużywane w nowym wyglądzie
   label: string;
   value: string;
   meter?: number;            // 0–100 dla paska postępu
@@ -67,7 +92,7 @@ export interface ReportItem {
 
 export interface ReportSection {
   id: string;
-  icon: string;
+  icon?: string;             // legacy — nieużywane w nowym wyglądzie
   title: string;
   status: 'good' | 'ok' | 'bad' | 'neutral';
   items: ReportItem[];

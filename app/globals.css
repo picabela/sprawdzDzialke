@@ -18,3 +18,19 @@ a {
   color: inherit;
   text-decoration: none;
 }
+
+/* Druk / zapis do PDF — czysty dokument z samą treścią raportu */
+@media print {
+  body {
+    background: #fff !important;
+  }
+  /* kontrolki mapy nie mają sensu na papierze */
+  .leaflet-control-container {
+    display: none !important;
+  }
+  /* sekcje raportu nie powinny być cięte między stronami */
+  .break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

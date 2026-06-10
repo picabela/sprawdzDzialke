@@ -7,9 +7,12 @@ const LOADING_MESSAGES = [
   'Sprawdzam dane katastralne…',
   'Pobieram indeks jakości powietrza (GIOŚ)…',
   'Sprawdzam plan zagospodarowania (MPZP)…',
+  'Sprawdzam rejestr osuwisk (SOPO)…',
   'Mierzę odległość od rzek i torów…',
+  'Pobieram dane demograficzne (GUS)…',
+  'Sprawdzam inwestycje w okolicy…',
   'Obliczam potencjał solarny…',
-  'AI składa raport…',
+  'Składam raport…',
 ];
 
 export default function LoadingReport() {
@@ -38,7 +41,7 @@ export default function LoadingReport() {
 
         <p className="text-neutral-800 text-base font-medium">{LOADING_MESSAGES[msgIndex]}</p>
         <p className="text-neutral-400 text-sm mt-2">
-          Odpytujemy 7 publicznych źródeł danych — zwykle 15–30 sekund
+          Odpytujemy 10 publicznych źródeł danych — zwykle 20–40 sekund
         </p>
       </div>
     </div>
