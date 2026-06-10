@@ -4,6 +4,7 @@ import { useState } from 'react';
 import SearchForm from '@/components/SearchForm';
 import ReportSection from '@/components/ReportSection';
 import LoadingReport from '@/components/LoadingReport';
+import MapPreview from '@/components/MapPreview';
 import type { Report } from '@/lib/types';
 
 const FEATURES = [
@@ -108,6 +109,13 @@ export default function Home() {
               <p className="text-neutral-500 text-sm leading-relaxed">{report.scoreSummary}</p>
             </div>
           </div>
+
+          {/* Mapa lokalizacji */}
+          {report.coords && (
+            <div className="mb-8">
+              <MapPreview coords={report.coords} label={report.address} />
+            </div>
+          )}
 
           {/* Sekcje */}
           {report.sections.map((section) => (

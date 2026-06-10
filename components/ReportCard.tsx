@@ -1,6 +1,7 @@
 import type { Report } from '@/lib/types';
 import ScoreBadge from './ScoreBadge';
 import ReportSection from './ReportSection';
+import MapPreview from './MapPreview';
 
 interface Props {
   report: Report;
@@ -20,9 +21,16 @@ export default function ReportCard({ report }: Props) {
       </div>
 
       {/* Ogólna ocena */}
-      <div className="mb-8">
+      <div className="mb-4">
         <ScoreBadge score={report.score} label={report.scoreLabel} summary={report.scoreSummary} />
       </div>
+
+      {/* Mapa lokalizacji */}
+      {report.coords && (
+        <div className="mb-8">
+          <MapPreview coords={report.coords} label={report.address} />
+        </div>
+      )}
 
       {/* Sekcje */}
       {report.sections.map((section) => (
